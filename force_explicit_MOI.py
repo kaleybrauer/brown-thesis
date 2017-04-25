@@ -39,7 +39,9 @@ def get_moments_of_inertia(positions, masses, center, vectors=False):
     I11 = I22 = I33 = I12 = I13 = I23 = 0.0
     for i in range(len(masses)):
         x, y, z = positions[i]
-        m = masses[i]
+        mUndamped = masses[i]
+        r = np.sqrt(x**2 + y**2 + z**2)
+        m = mUndamped * f_c(r)
 
         I11 += m * (y ** 2 + z ** 2)
         I22 += m * (x ** 2 + z ** 2)
@@ -127,8 +129,15 @@ def calculate_image_center(atoms, watchindex, pdirs):
 
     return xtilde, ytilde, ztilde
 
-
 def forcesIntoMOIBasis(atoms, index):
+    """  
+    transforms the forces on atom number [index] from the xyz basis 
+    into the MOI basis
+    
+    atoms: list of atoms
+    index: the atom number for which the forces will be transformed
+    """
+    
     forces = atoms.get_forces()
     positions = atoms.get_positions()
 
@@ -143,12 +152,13 @@ def forcesIntoMOIBasis(atoms, index):
     pdirs[1] /= np.linalg.norm(pdirs[1])
     pdirs[2] /= np.linalg.norm(pdirs[2])
     
-    # Calculating the image center in the pdirs coordinate basis.
+    # Calculating the center of mass in the pdirs coordinate basis.
     xtilde, ytilde, ztilde = calculate_image_center(atoms=atoms,
                                                     watchindex=index,
                                                     pdirs=pdirs)
 
-    # If the first moment is negative, then the principle direction is flipped.
+    # If the coordinates of the center of mass are negative, 
+    # then the principle direction is flipped.
     # We want the first moment to be positive in all three directions.
     if xtilde < 0.:
         pdirs[0] *= -1.
@@ -163,30 +173,24 @@ def forcesIntoMOIBasis(atoms, index):
     
     return transformed_forces, pdirs
 
-def forcesIntoXYZBasis(positions, forces, index):
-    forces = 23
-    return forces
-
-
-
-def f_Botu(r):
-    """ Botu damping function """
+def f_c(r):
+    """ damping function """
     Rc = 8
     if r < Rc:
         return 0.5*(np.cos(np.pi * r / Rc) + 1)
     else:
         return 0
     
-def Vki_MOI(k, i, symb, atoms, pdirs):
+def Vki_MOI(k, i, atoms, pdirs):
     """ Botu fingerprint """
     Vk = np.zeros(shape=8)
     eta = np.logspace(-1,2,num=8)
-    #symbs = atoms.get_chemical_symbols()
     for j in range(0, len(atoms)):
-        if (j != i):# and (symbs[j] == symb):
+        if (j != i):
             r_i = atoms.positions[i]
             r_j = atoms.positions[j]
             
+            # transform the distances into MOI basis
             r_i_tilde = transform_forces(pdirections=pdirs,
                                          forces=r_i)
             r_j_tilde = transform_forces(pdirections=pdirs,
@@ -194,12 +198,11 @@ def Vki_MOI(k, i, symb, atoms, pdirs):
             
             r_ij = atoms.get_distance(i,j)
             r_kij = r_i_tilde[k] - r_j_tilde[k]
-            # ^ r_i - r_j or other way around? absolute value??
             for m in range(0,8):
-                Vk[m] += r_kij / r_ij * np.exp(-np.square(r_ij/eta[m]))*f_Botu(r_ij)
+                Vk[m] += r_kij / r_ij * np.exp(-np.square(r_ij/eta[m]))*f_c(r_ij)
     return Vk
 
-def arrayFingerprintForces(atom1,atom2,atomslist,returnPDirs=False):
+def arrayFingerprintForces(atom1,atomslist,returnPDirs=False):
     """ makes an array of tuples with (1) fingerprint, (2) forces """
     arrayFF = []
     arrayPDirs = []
@@ -212,7 +215,7 @@ def arrayFingerprintForces(atom1,atom2,atomslist,returnPDirs=False):
                 forceMOI, pdirs = forcesIntoMOIBasis(atoms,i)
                 fingerprint = np.zeros(shape=(3,8))
                 for k in range(0,3):
-                    fingerprint[k] = Vki_MOI(k=k,i=i,symb=atom2,atoms=atoms,pdirs=pdirs)
+                    fingerprint[k] = Vki_MOI(k=k,i=i,atoms=atoms,pdirs=pdirs)
                 arrayFF.append((fingerprint,forceMOI))
                 arrayPDirs.append(pdirs)
     
@@ -251,87 +254,85 @@ def splitUpXYZ(y):
 
 """ begin script """
 
-# number of images in training set
-n = 100
+""" 
+to train/test:
+    O = 1
+    H = 2
+    Pt = 3
+"""
+trainAtom = 1
 
-# placing all training images into a list of images
-trainH2O = [None] * n
-for i in range(0, n):
-    # training data: every other image from total data
-    trainH2O[i] = read('water.extxyz', 50+i*2)
+
+""" placing data in lists """
+
+if trainAtom == 1 or trainAtom == 2:
+    # number of images in training set
+    n = 100
     
-# placing all testing images into a list of images
-testH2O = [None] * (n - 1)
-for i in range(0, n - 1):
-    # testing data: images not included in training data
-   testH2O[i] = read('water.extxyz', 50+i*2+1)
-   
-""" making fingerprints """
-
-#""" oxygen (from hydrogen) """
-#trainO = arrayFingerprintForces('O','H',trainH2O)
-#xO, yO = putInXY(trainO)
-#testO, pDirsO = arrayFingerprintForces('O','H',testH2O,returnPDirs=True)
-#xTestO, yTestO = putInXY(testO)
-#
-#""" hydrogen 2 """
-#trainH = arrayFingerprintForces('H','H',trainH2O)
-#xH, yH = putInXY(trainH)
-#testH, pDirsH = arrayFingerprintForces('H','H',testH2O,returnPDirs=True)
-#xTestH, yTestH = putInXY(testH)
-
-""" platinum """
-# number of images in training set
-n = 20
-
-# placing all training images into a list of images
-trainPts = [None] * n
-for i in range(0, n):
-    # training data: every other image from total data
-    trainPts[i] = read('defect-trajectory.extxyz', 50+i*2)
+    # placing all training images into a list of images
+    trainH2O = [None] * n
+    for i in range(0, n):
+         # training data: every other image from total data
+         trainH2O[i] = read('water.extxyz', 50+2*i)
     
-# placing all testing images into a list of images
-testPts = [None] * (n - 1)
-for i in range(0, n - 1):
-    # testing data: images not included in training data
-   testPts[i] = read('defect-trajectory.extxyz', 50+i*2+1)
+    # placing all testing images into a list of images
+    testH2O = [None] * (n - 1)
+    for i in range(0, n - 1):
+        # testing data: images not included in training data
+        testH2O[i] = read('water.extxyz', 50+2*i+1)
+        
+if trainAtom == 3:
+    # number of images in training set
+    n = 20
 
-trainPt = arrayFingerprintForces('Pt','Pt',trainPts)
-xPt, yPt = putInXY(trainPt)
-testPt, pDirsPt = arrayFingerprintForces('Pt','Pt',testPts,returnPDirs=True)
-xTestPt, yTestPt = putInXY(testPt)
+    # placing all training images into a list of images
+    trainPts = [None] * n
+    for i in range(0, n):
+        # training data: every other image from total data
+        trainPts[i] = read('defect-trajectory.extxyz', 50+i*2)
+    
+    # placing all testing images into a list of images
+    testPts = [None] * (n - 1)
+    for i in range(0, n - 1):
+        # testing data: images not included in training data
+        testPts[i] = read('defect-trajectory.extxyz', 50+i*2+1)
 
-# all the data in stored in tuples
-# each tuple has (1) fingerprints and (2) the forces
+
+""" fingerprinting """
+
+if trainAtom == 1:
+    """ oxygen """
+    trainO = arrayFingerprintForces('O',trainH2O)
+    x, y = putInXY(trainO)
+    testO, pDirs = arrayFingerprintForces('O',testH2O,returnPDirs=True)
+    xT, yT = putInXY(testO)
+
+if trainAtom == 2:
+    """ hydrogen """
+    trainH = arrayFingerprintForces('H',trainH2O)
+    x, y = putInXY(trainH)
+    testH, pDirs = arrayFingerprintForces('H',testH2O,returnPDirs=True)
+    xT, yT = putInXY(testH)
+    
+if trainAtom == 3:
+    """ platinum """
+    trainPt = arrayFingerprintForces('Pt',trainPts)
+    x, y = putInXY(trainPt)
+    testPt, pDirs = arrayFingerprintForces('Pt',testPts,returnPDirs=True)
+    xT, yT = putInXY(testPt)
+
 
 """ making kernel and gaussian process objects """
 kernel = RBF(1, (1e-2, 1e2))
 gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5)
 
-
-#""" train O """
-#x, y = xO, yO
-#xT, yT = xTestO, yTestO
-#pDirs = pDirsO
-
-#""" train H """
-#x, y = xH, yH
-#xT, yT = xTestH, yTestH
-#pDirs = pDirsH
-
-""" train Pt """
-x, y = xPt, yPt
-xT, yT = xTestPt, yTestPt
-pDirs = pDirsPt
-
-
-""" training """
+""" training and predicting """
 gp.fit(x, y)
 y_pred, sigma = gp.predict(xT, return_std=True)
 
 n = len(y_pred)
-yP_1, yP_2, yP_3 = splitUpXYZ(y_pred)
-yT_1, yT_2, yT_3 = splitUpXYZ(yT)
+#yP_1, yP_2, yP_3 = splitUpXYZ(y_pred)
+#yT_1, yT_2, yT_3 = splitUpXYZ(yT)
 
 """ transforming forces back into xyz basis """
 y_xyz = np.zeros(shape=(n,3))
@@ -347,37 +348,40 @@ yT_x, yT_y, yT_z = splitUpXYZ(y_Txyz)
 #%%
 
 """ to plot: """
-P = yP_z
-T = yT_z
+P = yP_y
+T = yT_y
 
-errMOI = abs((P-T)/T)
-print(np.mean(errMOI))
+errMOI = abs((P-T))
+print(np.median(errMOI))
+
+plotBool = False
 
 matplotlib.rcParams.update({'font.size': 18, 'figure.autolayout': True})
 
-""" plot predicted and calculated """
-fig = plt.figure(figsize=(11, 20))
-a = fig.add_subplot(2,1,1)
-a.errorbar(x=range(0,n),y=P, yerr=sigma, ecolor='g', 
-           capsize=7, elinewidth=2, label="Predicted", linestyle='', marker='o')
-a.plot(range(0,n),T,'ro', label="Calculated")
-#a.plot(range(0,n),Botu,'go', label="Botu")
+if plotBool:
+    """ plot predicted and calculated """
+    fig = plt.figure(figsize=(11, 20))
+    a = fig.add_subplot(2,1,1)
+    a.errorbar(x=range(0,n),y=P, yerr=sigma, ecolor='g', 
+               capsize=7, elinewidth=2, label="Predicted", linestyle='', marker='o')
+    a.plot(range(0,n),T,'ro', label="Calculated")
+    #a.plot(range(0,n),Botu,'go', label="Botu")
 
-a.set_title('MOI: Predicted and Calculated F_x for Platinum')
-a.set_xlabel('Image Number')
-a.set_ylabel('Force (eV/Angstrom)')
+    a.set_title('MOI: Predicted and Calculated F_x for Platinum')
+    a.set_xlabel('Image Number')
+    a.set_ylabel('Force (eV/Angstrom)')
 
-handles, labels = a.get_legend_handles_labels()
-a.legend(handles, labels)
+    handles, labels = a.get_legend_handles_labels()
+    a.legend(handles, labels)
 
-""" plot errors """
-b = fig.add_subplot(2,1,2)
-b.plot(range(0,n), errMOI, linestyle='--', marker='o')
-b.set_yscale('log')
-
-b.set_title('MOI: Relative Error b/w Predicted and Calculated F_x for Platinum')
-b.set_xlabel('Image Number')
-b.set_ylabel('Relative Error = |pred - calc|/|calc|')
+    """ plot errors """
+    b = fig.add_subplot(2,1,2)
+    b.plot(range(0,n), errMOI, linestyle='--', marker='o')
+    b.set_yscale('log')
+    
+    b.set_title('MOI: Relative Error b/w Predicted and Calculated F_x for Platinum')
+    b.set_xlabel('Image Number')
+    b.set_ylabel('Relative Error = |pred - calc|/|calc|')
 
 
 #plt.savefig('Pt_Fx_MOI.png')

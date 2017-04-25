@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Apr 20 13:04:56 2017
+Created on Sat Apr 15 17:54:24 2017
 
 @author: kaley_000
 """
@@ -10,8 +10,7 @@ from matplotlib import pyplot as plt
 from ase import Atoms, Atom
 from ase.io import read
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF#, ConstantKernel as C
-
+from sklearn.gaussian_process.kernels import RBF
 
 def f_Botu(r):
     """ Botu damping function """
@@ -25,9 +24,8 @@ def Vki_Botu(k, i, symb, atoms):
     """ Botu fingerprint """
     Vk = np.zeros(shape=8)
     eta = np.logspace(-1,2,num=8)
-    #symbs = atoms.get_chemical_symbols()
     for j in range(0, len(atoms)):
-        if (j != i):# and (symbs[j] == symb):
+        if (j != i):
             r_i = atoms.positions[i]
             r_j = atoms.positions[j]
             
@@ -37,44 +35,6 @@ def Vki_Botu(k, i, symb, atoms):
             for m in range(0,8):
                 Vk[m] += r_kij / r_ij * np.exp(-np.square(r_ij/eta[m]))*f_Botu(r_ij)
     return Vk
-
-def Vki_dG(k, i, atoms):
-    """ fingerprint based on deriv of G^II """
-    Rc = 8
-    Vk = np.zeros(shape=8)
-    eta = np.logspace(-1,2,num=8)
-    lam = 0.1*np.ones(shape=8)
-    zeta = 0.1*np.ones(shape=8)
-    """ lambda and zeta values??? """
-    for j in range(0,len(atoms)):
-        if (j != i):
-            for l in range(0,len(atoms)):
-                if l != i and l != j:
-                    r_i = atoms.positions[i]
-                    r_j = atoms.positions[j]
-                    r_l = atoms.positions[l]
-            
-                    r_ij = atoms.get_distance(i,j)
-                    r_il = atoms.get_distance(i,l)
-                    r_jl = atoms.get_distance(j,l)
-                
-                    cosTheta = np.dot(r_i-r_j,r_i-r_l)/(r_ij*r_il)
-                    rk_ij = r_i[k] - r_j[k] 
-                    rk_il = r_i[k] - r_l[k] 
-                    
-                    
-                    for m in range(0,8):
-                        Vk[m] += (1+lam[m]*cosTheta)**(zeta[m]-1)*\
-                                np.exp(-eta[m]*(r_ij**2 + r_il**2 + r_jl**2)/Rc)*\
-                                (lam[m]*zeta[m]*\
-                                (rk_ij*(r_ij*r_il-r_il**2*cosTheta)\
-                                + rk_il*(r_ij*r_il-r_ij**2*cosTheta))/(r_ij + r_il)**2\
-                                - 2*eta[m]*(rk_ij + rk_il)*(1+lam[m]*cosTheta)/Rc)
-                    
-    for m in range(0,8):
-        Vk[m] = Vk[m]*2**(1-zeta[m])
-        
-    return Vk                   
 
 def arrayFingerprintForces(atom1,atom2,atomslist):
     """ makes an array of tuples with (1) fingerprint, (2) forces """
@@ -86,15 +46,9 @@ def arrayFingerprintForces(atom1,atom2,atomslist):
         
         for i in range(0,len(symbs)):
             if symbs[i] == atom1:
-                fingerprint = np.zeros(shape=(3,8*2))
+                fingerprint = np.zeros(shape=(3,8))
                 for k in range(0,3):
-                    fingerprintI = Vki_Botu(k,i,atom2,atoms)
-                    fingerprintII = Vki_dG(k,i,atoms)
-                    fingerTotal = np.zeros(shape=8*2)
-                    for j in range(0,8):
-                        fingerTotal[j] = fingerprintI[j]
-                        fingerTotal[j+8] = fingerprintII[j]
-                    fingerprint[k] = fingerTotal
+                    fingerprint[k] = Vki_Botu(k,i,atom2,atoms)
                 arrayFF.append((fingerprint,forces[i]))
                 
     return arrayFF
@@ -106,7 +60,7 @@ def putInXY(tupleData):
     y = n by 3 array; y[i] = all three forces on atom i
     """
     n = len(tupleData)
-    x = np.zeros(shape=(n,3*2*8))
+    x = np.zeros(shape=(n,3*8))
     y = np.zeros(shape=(n,3))
     
     for i in range(0,n):
@@ -140,7 +94,7 @@ to train/test:
     H = 2
     Pt = 3
 """
-trainAtom = 3
+trainAtom = 1
 
 
 """ placing data in lists """
@@ -160,6 +114,7 @@ if trainAtom == 1 or trainAtom == 2:
     for i in range(0, n - 1):
         # testing data: images not included in training data
         testH2O[i] = read('water.extxyz', 50+2*i+1)
+        
 if trainAtom == 3:
     # number of images in training set
     n = 20
@@ -214,17 +169,17 @@ yP_x, yP_y, yP_z = splitUpXYZ(y_pred)
 yT_x, yT_y, yT_z = splitUpXYZ(yT)
 y_x, y_y, y_z = splitUpXYZ(y)
 
+
 #%%
 
 # to plot:
 P = yP_z
 T = yT_z
 
-errdG = abs((P-T))
-print(np.median(errdG))
+errBotu = abs((P-T))
+print(np.median(errBotu))
 
-plotErrs = False
-
+plotBool = False
 
 matplotlib.rcParams.update({'font.size': 18, 'figure.autolayout': True})
 
@@ -233,44 +188,27 @@ if plotBool:
     fig = plt.figure(figsize=(11, 20))
     a = fig.add_subplot(2,1,1)
     a.errorbar(x=range(0,n),y=P, yerr=sigma, ecolor='g', 
-               capsize=7, elinewidth=2, label="Predicted", linestyle='', marker='o')
+               capsize=7, elinewidth=2, label="Predicted", linestyle='--', marker='o')
     a.plot(range(0,n),T,'ro', label="Calculated")
-    #a.plot(range(0,len(yO)),y_x,'go',label="Training Data")
-
-    a.set_title('dG: Predicted and Calculated F_z for Platinum')
+    #a.plot(range(0,len(yO)),y_y,'go',label="Training Data")
+    
+    a.set_title('Botu: Predicted and Calculated F_z for Hydrogen')
     a.set_xlabel('Image Number')
     a.set_ylabel('Force (eV/Angstrom)')
-
+    
     handles, labels = a.get_legend_handles_labels()
     a.legend(handles, labels)
 
     """ plot errors """
     b = fig.add_subplot(2,1,2)
-    b.plot(range(0,n), errdG, linestyle='--', marker='o',label="dG")
+    b.plot(range(0,n), errBotu, linestyle='--', marker='o')
     b.set_yscale('log')
-    
-    b.set_title('dG: Relative Error b/w Predicted and Calculated F_z for Platinum')
+
+    b.set_title('Botu: Relative Error b/w Predicted and Calculated F_z for Hydrogen')
     b.set_xlabel('Image Number')
     b.set_ylabel('Relative Error = |pred - calc|/|calc|')
 
+#b.plot([i[15] for i in xTestO],P,'o')
 
-if plotErrs:
-    """ plot of relative errors for different schemes """
-    fig = plt.figure(figsize=(15,10))
-    b = fig.add_subplot(1,1,1)
-    b.set_yscale('log')
-    plt.plot(range(0,n), errdG, linestyle='', marker='o',label="dG",color='m',markersize=9)
-    b.plot(range(0,n), errMOI, linestyle='', marker='^',color='g',label="MOI",markersize=10)
-    b.plot(range(0,n), errBotu, linestyle='', marker='*',label="Botu",markersize=14)
-
-    handles, labels = b.get_legend_handles_labels()
-    b.legend(handles, labels)
-    b.set_title('Relative Error b/w Predicted and Calculated F_z for Platinum')
-    
-    b.set_xlabel('Atom Number')
-    b.set_ylabel('Relative Error = |pred - calc|/|calc|')
-
-
-#plt.savefig('Pt_Fz_dG.png')
-#plt.savefig('allErrors_Pt_Fz.png')
+#plt.savefig('H_Fz_Botu3.png')
 #plt.savefig('botu3_traintest_firsthalf.png')
