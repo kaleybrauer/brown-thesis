@@ -20,7 +20,7 @@ def f_Botu(r):
     else:
         return 0
     
-def Vki_Botu(k, i, symb, atoms):
+def Vki_Botu(k, i, atoms):
     """ Botu fingerprint """
     Vk = np.zeros(shape=8)
     eta = np.logspace(-1,2,num=8)
@@ -36,7 +36,7 @@ def Vki_Botu(k, i, symb, atoms):
                 Vk[m] += r_kij / r_ij * np.exp(-np.square(r_ij/eta[m]))*f_Botu(r_ij)
     return Vk
 
-def arrayFingerprintForces(atom1,atom2,atomslist):
+def arrayFingerprintForces(atom1,atomslist):
     """ makes an array of tuples with (1) fingerprint, (2) forces """
     arrayFF = []
     
@@ -48,7 +48,7 @@ def arrayFingerprintForces(atom1,atom2,atomslist):
             if symbs[i] == atom1:
                 fingerprint = np.zeros(shape=(3,8))
                 for k in range(0,3):
-                    fingerprint[k] = Vki_Botu(k,i,atom2,atoms)
+                    fingerprint[k] = Vki_Botu(k,i,atoms)
                 arrayFF.append((fingerprint,forces[i]))
                 
     return arrayFF
@@ -86,7 +86,7 @@ def splitUpXYZ(y):
     return y_x, y_y, y_z
 
 
-""" begin script """
+""" --------------------- begin script --------------------- """
 
 """ 
 to train/test:
@@ -94,66 +94,73 @@ to train/test:
     H = 2
     Pt = 3
 """
-trainAtom = 1
+trainAtom = 2
 
 
 """ placing data in lists """
 
 if trainAtom == 1 or trainAtom == 2:
     # number of images in training set
-    n = 100
+    n = 50
+    # number of images in testing set
+    nT = 100
     
     # placing all training images into a list of images
     trainH2O = [None] * n
     for i in range(0, n):
          # training data: every other image from total data
-         trainH2O[i] = read('water.extxyz', 50+2*i)
+         trainH2O[i] = read('water.extxyz', 50+4*i)
     
     # placing all testing images into a list of images
-    testH2O = [None] * (n - 1)
-    for i in range(0, n - 1):
+    testH2O = [None] * nT
+    for i in range(0, nT):
         # testing data: images not included in training data
         testH2O[i] = read('water.extxyz', 50+2*i+1)
         
 if trainAtom == 3:
     # number of images in training set
-    n = 20
+    n = 5
+    # number of images in testing set
+    nT = 20
 
     # placing all training images into a list of images
     trainPts = [None] * n
     for i in range(0, n):
         # training data: every other image from total data
-        trainPts[i] = read('defect-trajectory.extxyz', 50+i*2)
+        trainPts[i] = read('defect-trajectory.extxyz', 1000+i*8)
     
     # placing all testing images into a list of images
-    testPts = [None] * (n - 1)
-    for i in range(0, n - 1):
+    testPts = [None] * (nT)
+    for i in range(0, nT):
         # testing data: images not included in training data
-        testPts[i] = read('defect-trajectory.extxyz', 50+i*2+1)
+        testPts[i] = read('defect-trajectory.extxyz', 1000+i*2+1)
 
 
 """ fingerprinting """
 
 if trainAtom == 1:
     """ oxygen """
-    trainO = arrayFingerprintForces('O','H',trainH2O)
+    trainO = arrayFingerprintForces('O',trainH2O)
     x, y = putInXY(trainO)
-    testO = arrayFingerprintForces('O','H',testH2O)
+    testO = arrayFingerprintForces('O',testH2O)
     xT, yT = putInXY(testO)
+    atomName = 'Oxygen'
 
 if trainAtom == 2:
     """ hydrogen """
-    trainH = arrayFingerprintForces('H','H',trainH2O)
+    trainH = arrayFingerprintForces('H',trainH2O)
     x, y = putInXY(trainH)
-    testH = arrayFingerprintForces('H','H',testH2O)
+    testH = arrayFingerprintForces('H',testH2O)
     xT, yT = putInXY(testH)
+    atomName = 'Hydrogen'
     
 if trainAtom == 3:
     """ platinum """
-    trainPt = arrayFingerprintForces('Pt','Pt',trainPts)
+    trainPt = arrayFingerprintForces('Pt',trainPts)
     x, y = putInXY(trainPt)
-    testPt = arrayFingerprintForces('Pt','Pt',testPts)
+    testPt = arrayFingerprintForces('Pt',testPts)
     xT, yT = putInXY(testPt)
+    atomName = 'Platinum'
 
 
 """ making kernel and gaussian process objects """
@@ -173,13 +180,39 @@ y_x, y_y, y_z = splitUpXYZ(y)
 #%%
 
 # to plot:
-P = yP_z
-T = yT_z
+""" plotDirec: 1 = x, 2 = y, 3 = z """
+plotDirec = 2
 
-errBotu = abs((P-T))
-print(np.median(errBotu))
+if plotDirec == 1:
+    P = yP_z
+    T = yT_z
+    direcName = 'F_x'
+if plotDirec == 2:
+    P = yP_y
+    T = yT_y
+    direcName = 'F_y' 
+if plotDirec == 3:
+    P = yP_z
+    T = yT_z
+    direcName = 'F_z'
+
+errBotu = abs((P-T)/T)
+print('x errors')
+print("%.4f" % np.mean(abs((yP_x-yT_x))))
+print("%.5f" % np.median(abs((yP_x-yT_x))))
+print('y errors')
+print("%.4f" % np.mean(abs((yP_y-yT_y))))
+print("%.5f" % np.median(abs((yP_y-yT_y))))
+print('z errors')
+print("%.4f" % np.mean(abs((yP_z-yT_z))))
+print("%.5f" % np.median(abs((yP_z-yT_z))))
+
+fz_Botu = yP_z
+fy_Botu = yP_y
+fx_Botu = yP_x
 
 plotBool = False
+parityBool = True
 
 matplotlib.rcParams.update({'font.size': 18, 'figure.autolayout': True})
 
@@ -192,7 +225,7 @@ if plotBool:
     a.plot(range(0,n),T,'ro', label="Calculated")
     #a.plot(range(0,len(yO)),y_y,'go',label="Training Data")
     
-    a.set_title('Botu: Predicted and Calculated F_z for Hydrogen')
+    a.set_title('Botu: Predicted and Calculated %s for %s' % (direcName, atomName))
     a.set_xlabel('Image Number')
     a.set_ylabel('Force (eV/Angstrom)')
     
@@ -204,11 +237,19 @@ if plotBool:
     b.plot(range(0,n), errBotu, linestyle='--', marker='o')
     b.set_yscale('log')
 
-    b.set_title('Botu: Relative Error b/w Predicted and Calculated F_z for Hydrogen')
+    b.set_title('Botu: Relative Error b/w Predicted and Calculated %s for %s' % (direcName, atomName))
     b.set_xlabel('Image Number')
     b.set_ylabel('Relative Error = |pred - calc|/|calc|')
 
-#b.plot([i[15] for i in xTestO],P,'o')
+if parityBool:
+    """ makes a parity plot """
+    fig = plt.figure(figsize=(10,10))
+    a = fig.add_subplot(1,1,1)
+    a.plot(T,T,'-r')
+    a.plot(T,P,linestyle='',marker='o')
+    
+    a.set_title('Botu Parity Plot: %s on %s' % (direcName, atomName))
+    a.set_xlabel('Calculated Force (eV/Angstrom)')
+    a.set_ylabel('Predicted Force (eV/Angstrom)')
 
-#plt.savefig('H_Fz_Botu3.png')
-#plt.savefig('botu3_traintest_firsthalf.png')
+#plt.savefig('Botu_parity_Pt_Fy.png')

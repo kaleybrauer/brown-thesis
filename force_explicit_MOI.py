@@ -252,6 +252,37 @@ def splitUpXYZ(y):
     
     return y_x, y_y, y_z
 
+def splitInto12(y):
+    n = len(y)
+    nSmall = np.int(n/12)
+    a1 = np.zeros(shape=nSmall)
+    a2 = np.zeros(shape=nSmall)
+    a3 = np.zeros(shape=nSmall)
+    a4 = np.zeros(shape=nSmall)
+    a5 = np.zeros(shape=nSmall)
+    a6 = np.zeros(shape=nSmall)
+    a7 = np.zeros(shape=nSmall)
+    a8 = np.zeros(shape=nSmall)
+    a9 = np.zeros(shape=nSmall)
+    a10 = np.zeros(shape=nSmall)
+    a11 = np.zeros(shape=nSmall)
+    a12 = np.zeros(shape=nSmall)
+    for i in range(0,nSmall):
+        j = i*12
+        a1[i] = y[j]
+        a2[i] = y[j+1]
+        a3[i] = y[j+2]
+        a4[i] = y[j+3]
+        a5[i] = y[j+4]
+        a6[i] = y[j+5]
+        a7[i] = y[j+6]
+        a8[i] = y[j+7]
+        a9[i] = y[j+8]
+        a10[i] = y[j+9]
+        a11[i] = y[j+10]
+        a12[i] = y[j+11]
+    return a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12
+
 """ begin script """
 
 """ 
@@ -260,42 +291,46 @@ to train/test:
     H = 2
     Pt = 3
 """
-trainAtom = 1
+trainAtom = 2
 
 
 """ placing data in lists """
 
 if trainAtom == 1 or trainAtom == 2:
     # number of images in training set
-    n = 100
+    n = 50
+    # number of images in testing set
+    nT = 100
     
     # placing all training images into a list of images
     trainH2O = [None] * n
     for i in range(0, n):
          # training data: every other image from total data
-         trainH2O[i] = read('water.extxyz', 50+2*i)
+         trainH2O[i] = read('water.extxyz', 50+4*i)
     
     # placing all testing images into a list of images
-    testH2O = [None] * (n - 1)
-    for i in range(0, n - 1):
+    testH2O = [None] * nT
+    for i in range(0, nT):
         # testing data: images not included in training data
         testH2O[i] = read('water.extxyz', 50+2*i+1)
         
 if trainAtom == 3:
     # number of images in training set
-    n = 20
+    n = 5
+    # number of images in testing set
+    nT = 20
 
     # placing all training images into a list of images
     trainPts = [None] * n
     for i in range(0, n):
         # training data: every other image from total data
-        trainPts[i] = read('defect-trajectory.extxyz', 50+i*2)
+        trainPts[i] = read('defect-trajectory.extxyz', 1000+i*8)
     
     # placing all testing images into a list of images
-    testPts = [None] * (n - 1)
-    for i in range(0, n - 1):
+    testPts = [None] * (nT)
+    for i in range(0, nT):
         # testing data: images not included in training data
-        testPts[i] = read('defect-trajectory.extxyz', 50+i*2+1)
+        testPts[i] = read('defect-trajectory.extxyz', 1000+i*2+1)
 
 
 """ fingerprinting """
@@ -306,6 +341,7 @@ if trainAtom == 1:
     x, y = putInXY(trainO)
     testO, pDirs = arrayFingerprintForces('O',testH2O,returnPDirs=True)
     xT, yT = putInXY(testO)
+    atomName = 'Oxygen'
 
 if trainAtom == 2:
     """ hydrogen """
@@ -313,6 +349,7 @@ if trainAtom == 2:
     x, y = putInXY(trainH)
     testH, pDirs = arrayFingerprintForces('H',testH2O,returnPDirs=True)
     xT, yT = putInXY(testH)
+    atomName = 'Hydrogen'
     
 if trainAtom == 3:
     """ platinum """
@@ -320,6 +357,7 @@ if trainAtom == 3:
     x, y = putInXY(trainPt)
     testPt, pDirs = arrayFingerprintForces('Pt',testPts,returnPDirs=True)
     xT, yT = putInXY(testPt)
+    atomName = 'Platinum'
 
 
 """ making kernel and gaussian process objects """
@@ -348,13 +386,43 @@ yT_x, yT_y, yT_z = splitUpXYZ(y_Txyz)
 #%%
 
 """ to plot: """
-P = yP_y
-T = yT_y
+""" plotDirec: 1 = x, 2 = y, 3 = z """
+plotDirec = 3
 
-errMOI = abs((P-T))
-print(np.median(errMOI))
+if plotDirec == 1:
+    P = yP_z
+    T = yT_z
+    direcName = 'F_x'
+if plotDirec == 2:
+    P = yP_y
+    T = yT_y
+    direcName = 'F_y' 
+if plotDirec == 3:
+    P = yP_z
+    T = yT_z
+    direcName = 'F_z' 
+
+errMOI = abs((P-T)/T)
+print('x errors')
+print("%.4f" % np.mean(abs((yP_x-yT_x))))
+print("%.5f" % np.median(abs((yP_x-yT_x))))
+print('y errors')
+print("%.4f" % np.mean(abs((yP_y-yT_y))))
+print("%.5f" % np.median(abs((yP_y-yT_y))))
+print('z errors')
+print("%.4f" % np.mean(abs((yP_z-yT_z))))
+print("%.5f" % np.median(abs((yP_z-yT_z))))
+
+fz_MOI = yP_z
+fy_MOI = yP_y
+fx_MOI = yP_x
+
+if trainAtom == 3:
+    a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12 = splitInto12(P)
+    a1T, a2T, a3T, a4T, a5T, a6T, a7T, a8T, a9T, a10T, a11T, a12T = splitInto12(T)
 
 plotBool = False
+parityBool = True
 
 matplotlib.rcParams.update({'font.size': 18, 'figure.autolayout': True})
 
@@ -367,8 +435,8 @@ if plotBool:
     a.plot(range(0,n),T,'ro', label="Calculated")
     #a.plot(range(0,n),Botu,'go', label="Botu")
 
-    a.set_title('MOI: Predicted and Calculated F_x for Platinum')
-    a.set_xlabel('Image Number')
+    a.set_title('MOI: Predicted and Calculated %s for %s' % (direcName, atomName))
+    a.set_xlabel('Atom Number')
     a.set_ylabel('Force (eV/Angstrom)')
 
     handles, labels = a.get_legend_handles_labels()
@@ -379,9 +447,32 @@ if plotBool:
     b.plot(range(0,n), errMOI, linestyle='--', marker='o')
     b.set_yscale('log')
     
-    b.set_title('MOI: Relative Error b/w Predicted and Calculated F_x for Platinum')
-    b.set_xlabel('Image Number')
+    b.set_title('MOI: Relative Error b/w Predicted and Calculated %s on %s' % (direcName, atomName))
+    b.set_xlabel('Atom Number')
     b.set_ylabel('Relative Error = |pred - calc|/|calc|')
+    
+if parityBool:
+    """ makes a parity plot """
+    fig = plt.figure(figsize=(10,10))
+    a = fig.add_subplot(1,1,1)
+    a.plot(T,T,'-r')
+    a.plot(T,P,linestyle='',marker='o')
+    
+    a.set_title('MOI Parity Plot: %s on %s' % (direcName, atomName))
+    a.set_xlabel('Calculated Force (eV/Angstrom)')
+    a.set_ylabel('Predicted Force (eV/Angstrom)')
+#    a.plot(a1T,a1,'go')
+#    a.plot(a2T,a2,'ro')
+#    a.plot(a3T,a3,'bo')
+#    a.plot(a4T,a4,'mo')
+#    a.plot(a5T,a5,'yo')
+#    a.plot(a6T,a6,'bo')
+#    a.plot(a7T,a7,'co')
+#    a.plot(a8T,a8,marker='o',color='0.5',linestyle='')
+#    a.plot(a9T,a9,marker='o',color='#ffc0cb',linestyle='')
+#    a.plot(a10T,a10,marker='o',color='#11a51b',linestyle='')
+#    a.plot(a12T,a12,marker='o',color='#11dbad',linestyle='')
+#    a.plot(a11T,a11,marker='o',color='k',linestyle='')
 
-
+#plt.savefig('MOI_parity_Pt_Fy.png')
 #plt.savefig('Pt_Fx_MOI.png')
